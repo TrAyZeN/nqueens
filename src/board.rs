@@ -63,58 +63,64 @@ impl Board {
         let mut rng = rand::thread_rng();
         let mut state: Vec<Queen> = Vec::with_capacity(self.size);
 
-        for n in 0..self.size {
-            let mut queen = Queen::random(&mut rng, self.size);
-
-            // We look for the insertion index because we want to maintain our
-            // vector sorted
-            // Note: We could use binary search here
-            let mut i = 0;
-            while i < n && queen > state[i] {
-                i += 1;
-            }
-
-            // We check if the queen already exists if not we can insert it and
-            // continue
-            if i == n || queen != state[i] {
-                state.insert(i, queen);
-                continue;
-            }
-
-            let first_index = i;
-
-            debug_assert_eq!(queen, state[i]);
-
-            // We increment the queen position index and try to find one
-            // that does not exists
-            while i < n - 1 && queen == state[i] {
-                queen.increment_position_index(1, self.size);
-                i += 1;
-            }
-
-            if i < n - 1 || queen != state[i] {
-                state.insert(i, queen);
-                continue;
-            } else if queen.get_position_index(self.size) < self.size * self.size - 1 {
-                queen.increment_position_index(1, self.size);
-                state.push(queen);
-                continue;
-            }
-
-            debug_assert_eq!(queen.get_position_index(self.size), self.size * self.size - 1);
-
-            // We have reached the end now we have to check the beginning
-            queen = Queen::new(0, 0);
-            i = 0;
-            while i < first_index && queen == state[i] {
-                queen.increment_position_index(1, self.size);
-                i += 1;
-            }
-
-            state.insert(i, queen);
+        for _ in 0..self.size {
+            self.insert_new(Queen::random(&mut rng, self.size), &mut state);
         }
 
         state
+    }
+
+    fn insert_new(&self, mut queen: Queen, state: &mut Vec<Queen>) -> usize {
+        // We look for the insertion index because we want to maintain our
+        // vector sorted
+        // Note: We could use binary search here
+        let mut i = 0;
+        while i < state.len() && queen > state[i] {
+            i += 1;
+        }
+
+        // We check if the queen already exists if not we can insert it and
+        // continue
+        if i == state.len() || queen != state[i] {
+            state.insert(i, queen);
+            return i;
+        }
+
+        let first_index = i;
+
+        debug_assert_eq!(queen, state[i]);
+
+        // We increment the queen position index and try to find one
+        // that does not exists
+        while i < state.len() - 1 && queen == state[i] {
+            queen.increment_position_index(1, self.size);
+            i += 1;
+        }
+
+        if i < state.len() - 1 || queen != state[i] {
+            state.insert(i, queen);
+            return i;
+        } else if queen.get_position_index(self.size) < self.size * self.size - 1 {
+            queen.increment_position_index(1, self.size);
+            state.push(queen);
+            return i;
+        }
+
+        debug_assert_eq!(
+            queen.get_position_index(self.size),
+            self.size * self.size - 1
+        );
+
+        // We have reached the end now we have to check the beginning
+        queen = Queen::new(0, 0);
+        i = 0;
+        while i < first_index && queen == state[i] {
+            queen.increment_position_index(1, self.size);
+            i += 1;
+        }
+
+        state.insert(i, queen);
+        return i;
     }
 
     /// Generates a new random neighbour of the current configuration
@@ -123,21 +129,16 @@ impl Board {
     fn random_neighbour(&self, state: &Vec<Queen>) -> Vec<Queen> {
         let mut rng = rand::thread_rng();
         let mut neighbour_state = state.clone();
-        neighbour_state.remove(rng.gen::<usize>() % self.size);
 
-        loop {
-            let new_queen = Queen::random(&mut rng, self.size);
+        let new_queen = self.insert_new(Queen::random(&mut rng, self.size), &mut neighbour_state);
 
-            let mut i = 0;
-            while i < neighbour_state.len() && new_queen > neighbour_state[i] {
-                i += 1;
-            }
+        let n = match rng.gen::<usize>() % neighbour_state.len() {
+            n if n == new_queen => (n + 1) % neighbour_state.len(),
+            n => n,
+        };
+        neighbour_state.remove(n);
 
-            if i == neighbour_state.len() || new_queen != neighbour_state[i] {
-                neighbour_state.insert(i, new_queen);
-                return neighbour_state;
-            }
-        }
+        neighbour_state
     }
 
     /// Computes number of pairs of endangered queens

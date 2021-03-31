@@ -12,25 +12,35 @@ struct Opts {
     n: usize,
     /// Number of iterations.
     iterations: usize,
+    /// Initial temperature (default is 1000)
+    #[clap(short, long)]
+    temperature: Option<f32>,
 }
 
 fn main() {
     let o = Opts::parse();
 
-    // TODO: Check non zero
-    // TODO: Initial temperature
+    if o.n < 4 {
+        println!("Please specify a number of queens greater than 4.");
+        return;
+    }
 
+    if o.iterations == 0 {
+        println!("Please specify a number of iterations greater than 0.");
+        return;
+    }
+
+    let initial_temperature = o.temperature.unwrap_or(1000.);
     let b = Board::new(o.n);
-    let solution = b.simulated_annealing(1., o.iterations);
-    println!("{:?}", solution);
+    let solution = b.simulated_annealing(initial_temperature, o.iterations);
 
     let mut i = 0;
     for y in 0..o.n {
-        let mut line = vec!['#'; o.n];
+        let mut line = vec!["- "; o.n];
 
         for x in 0..o.n {
             if i < solution.len() && solution[i].is_at_position(x, y) {
-                line[i] = 'o';
+                line[i] = "Q ";
                 i += 1;
             }
         }
