@@ -1,13 +1,15 @@
-use std::cmp::Ordering;
+//! Core logic
+
 use crate::utils::unsigned_diff;
 use rand::prelude::*;
+use std::cmp::Ordering;
 
 /// A squared board containing queens
 #[derive(Debug)]
 pub struct Board {
     /// Size of the board
     size: usize,
-    /// Sorted vector of queens by position index
+    /// Sorted vector of queens by row major order
     queens: Vec<Queen>,
 }
 
@@ -16,6 +18,8 @@ impl Board {
     #[inline]
     #[must_use]
     pub fn new(size: usize) -> Self {
+        debug_assert!(size > 0);
+
         Self {
             size,
             queens: Vec::new(),
@@ -24,7 +28,11 @@ impl Board {
 
     /// Local search a configuration
     #[must_use]
-    pub fn simulated_annealing(&self, initial_temperature: f32, num_iterations: usize) -> Vec<Queen> {
+    pub fn simulated_annealing(
+        &self,
+        initial_temperature: f32,
+        num_iterations: usize,
+    ) -> Vec<Queen> {
         let mut rng = rand::thread_rng();
         let mut state = self.random_state();
         let mut e_current = self.objective(&state);
@@ -35,7 +43,7 @@ impl Board {
             let neighbour_state = self.random_neighbour(&state);
 
             let e_next = self.objective(&neighbour_state);
-            if e_current > e_next  {
+            if e_current > e_next {
                 state = neighbour_state;
                 e_current = e_next;
             } else if acceptance_probability(e_current, e_next, t) >= rng.gen::<f32>() {
@@ -50,38 +58,68 @@ impl Board {
         return state;
     }
 
-    /// Places `self.size` queens randomly on the board.
+    /// Places `self.size` queens randomly on the board
     fn random_state(&self) -> Vec<Queen> {
+        let mut rng = rand::thread_rng();
         let mut state: Vec<Queen> = Vec::with_capacity(self.size);
 
-        let mut rng = rand::thread_rng();
         for n in 0..self.size {
-            let mut i = rng.gen::<usize>() % (self.size * self.size);
+            let mut queen = Queen::random(&mut rng, self.size);
 
-            let mut j = 0;
-            loop {
-                while j < n && state[j].get_position_index(self.size) < i {
-                    j += 1;
-                }
-
-                if j == n {
-                    state.insert(j, Queen::new(i % self.size, i / self.size));
-                    break;
-                }
-
-                if state[j].get_position_index(self.size) != i {
-                    state.insert(j + 1, Queen::new(i % self.size, i / self.size));
-                    break;
-                }
-
+            // We look for the insertion index because we want to maintain our
+            // vector sorted
+            // Note: We could use binary search here
+            let mut i = 0;
+            while i < n && queen > state[i] {
                 i += 1;
             }
+
+            // We check if the queen already exists if not we can insert it and
+            // continue
+            if i == n || queen != state[i] {
+                state.insert(i, queen);
+                continue;
+            }
+
+            let first_index = i;
+
+            debug_assert_eq!(queen, state[i]);
+
+            // We increment the queen position index and try to find one
+            // that does not exists
+            while i < n - 1 && queen == state[i] {
+                queen.increment_position_index(1, self.size);
+                i += 1;
+            }
+
+            if i < n - 1 || queen != state[i] {
+                state.insert(i, queen);
+                continue;
+            } else if queen.get_position_index(self.size) < self.size * self.size - 1 {
+                queen.increment_position_index(1, self.size);
+                state.push(queen);
+                continue;
+            }
+
+            debug_assert_eq!(queen.get_position_index(self.size), self.size * self.size - 1);
+
+            // We have reached the end now we have to check the beginning
+            queen = Queen::new(0, 0);
+            i = 0;
+            while i < first_index && queen == state[i] {
+                queen.increment_position_index(1, self.size);
+                i += 1;
+            }
+
+            state.insert(i, queen);
         }
 
         state
     }
 
-    /// Generates a new random configuration by moving only one queen
+    /// Generates a new random neighbour of the current configuration
+    /// which is the same configuration but one queen moved
+    #[must_use]
     fn random_neighbour(&self, state: &Vec<Queen>) -> Vec<Queen> {
         let mut rng = rand::thread_rng();
         let mut neighbour_state = state.clone();
@@ -91,13 +129,11 @@ impl Board {
             let new_queen = Queen::random(&mut rng, self.size);
 
             let mut i = 0;
-            while i < neighbour_state.len()
-                && new_queen > neighbour_state[i] {
+            while i < neighbour_state.len() && new_queen > neighbour_state[i] {
                 i += 1;
             }
 
-            if i == neighbour_state.len()
-                || new_queen != neighbour_state[i] {
+            if i == neighbour_state.len() || new_queen != neighbour_state[i] {
                 neighbour_state.insert(i, new_queen);
                 return neighbour_state;
             }
@@ -145,14 +181,15 @@ pub struct Queen {
 }
 
 impl Queen {
-    /// Creates a new queen
+    /// Creates a new queen at the given position
     #[inline]
     #[must_use]
     pub fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
 
-    /// Creates a queen with random position in the board
+    /// Creates a queen with random position in a square of the given size
+    #[must_use]
     pub fn random(rng: &mut ThreadRng, size: usize) -> Self {
         Self {
             x: rng.gen::<usize>() % size,
@@ -160,15 +197,17 @@ impl Queen {
         }
     }
 
-    /// Increments the 1D array position of the queen
+    /// Increments the row major order of the queen and updates its position
+    #[inline]
     pub fn increment_position_index(&mut self, increment: usize, size: usize) {
         let p = self.get_position_index(size) + increment;
+        debug_assert!(p < size * size);
 
         self.x = p % size;
         self.y = (p / size) % size;
     }
 
-    /// Returns 1D array position of the queen
+    /// Computes the row major order of the queen
     #[inline]
     #[must_use]
     pub fn get_position_index(&self, size: usize) -> usize {
@@ -177,6 +216,7 @@ impl Queen {
 
     /// Checks if the queen is at the given position on the board
     #[inline]
+    #[must_use]
     pub fn is_at_position(&self, x: usize, y: usize) -> bool {
         x == self.x && y == self.y
     }
@@ -184,12 +224,14 @@ impl Queen {
 
 impl PartialOrd for Queen {
     #[inline]
+    #[must_use]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Queen {
+    #[must_use]
     fn cmp(&self, other: &Self) -> Ordering {
         match self.y.cmp(&other.y) {
             Ordering::Equal => self.x.cmp(&other.x),
@@ -198,7 +240,13 @@ impl Ord for Queen {
     }
 }
 
+/// Computes the acceptance probability of the next state which have less
+/// energy than the current one.
+#[inline]
+#[must_use]
 fn acceptance_probability(energy: f32, energy_next: f32, temperature: f32) -> f32 {
+    debug_assert!(temperature != 0.);
+
     f32::exp((energy_next - energy) / temperature)
 }
 
@@ -234,10 +282,11 @@ mod tests {
 
     #[test]
     fn random_state() {
-        let b = Board::new(8);
+        let b = Board::new(4);
         let state = b.random_state();
 
         for i in 1..state.len() {
+            println!("{:?} {:?}", state[i - 1], state[i]);
             assert!(state[i - 1] < state[i]);
         }
     }
@@ -256,6 +305,7 @@ mod tests {
         assert_ne!(state, neighbour);
 
         for i in 1..neighbour.len() {
+            println!("{:?} {:?}", state[i - 1], state[i]);
             assert!(neighbour[i - 1] < neighbour[i]);
         }
     }

@@ -1,5 +1,5 @@
-use std::iter::FromIterator;
 use clap::Clap;
+use std::iter::FromIterator;
 
 use nqueens::board::Board;
 
@@ -18,6 +18,7 @@ fn main() {
     let o = Opts::parse();
 
     // TODO: Check non zero
+    // TODO: Initial temperature
 
     let b = Board::new(o.n);
     let solution = b.simulated_annealing(1., o.iterations);
@@ -28,8 +29,7 @@ fn main() {
         let mut line = vec!['#'; o.n];
 
         for x in 0..o.n {
-            if i < solution.len()
-                && solution[i].is_at_position(x, y) {
+            if i < solution.len() && solution[i].is_at_position(x, y) {
                 line[i] = 'o';
                 i += 1;
             }
@@ -38,4 +38,3 @@ fn main() {
         println!("{}", String::from_iter(line));
     }
 }
-
