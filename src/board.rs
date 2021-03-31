@@ -37,21 +37,23 @@ impl Board {
         let mut state = self.random_state();
         let mut e_current = self.objective(&state);
 
+        let cooling_factor = 0.99;
+
         let mut t = initial_temperature;
         let mut i = 0;
         while i < num_iterations && e_current < 0. {
             let neighbour_state = self.random_neighbour(&state);
-
             let e_next = self.objective(&neighbour_state);
-            if e_current > e_next {
+
+            if e_next >= e_current {
                 state = neighbour_state;
                 e_current = e_next;
-            } else if acceptance_probability(e_current, e_next, t) >= rng.gen::<f32>() {
+            } else if rng.gen::<f32>() <= acceptance_probability(e_current, e_next, t) {
                 state = neighbour_state;
                 e_current = e_next;
             }
 
-            t = initial_temperature / (i + 1) as f32;
+            t *= cooling_factor;
             i += 1;
         }
 
@@ -70,6 +72,8 @@ impl Board {
         state
     }
 
+    /// Try insert the queen, if the queen is already existing
+    /// generates an another queen by incrementing its position
     fn insert_new(&self, mut queen: Queen, state: &mut Vec<Queen>) -> usize {
         // We look for the insertion index because we want to maintain our
         // vector sorted
@@ -174,6 +178,16 @@ impl Board {
     }
 }
 
+/// Computes the acceptance probability of the next state which have less
+/// energy than the current one.
+#[inline]
+#[must_use]
+fn acceptance_probability(energy: f32, energy_next: f32, temperature: f32) -> f32 {
+    debug_assert!(temperature != 0.);
+
+    f32::exp((energy_next - energy) / temperature)
+}
+
 /// A structure encapsulating the position of the queen
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Queen {
@@ -241,16 +255,6 @@ impl Ord for Queen {
     }
 }
 
-/// Computes the acceptance probability of the next state which have less
-/// energy than the current one.
-#[inline]
-#[must_use]
-fn acceptance_probability(energy: f32, energy_next: f32, temperature: f32) -> f32 {
-    debug_assert!(temperature != 0.);
-
-    f32::exp((energy_next - energy) / temperature)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +283,19 @@ mod tests {
         ];
 
         assert_eq!(b.objective(&state), -1f32);
+    }
+
+    #[test]
+    fn objective_3() {
+        let b = Board::new(4);
+        let state = vec![
+            Queen::new(0, 0),
+            Queen::new(1, 1),
+            Queen::new(2, 2),
+            Queen::new(3, 3),
+        ];
+
+        assert_eq!(b.objective(&state), -6f32);
     }
 
     #[test]
